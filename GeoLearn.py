@@ -21,7 +21,7 @@ class Tweet:
 
 
 class User:
-    def __init__(self, id_user, geotag, rev, text):
+    def __init__(self, id_user, geotag, text, rev='na'):
         self.id_user = id_user
         self.geotag = geotag
         self.rev = rev

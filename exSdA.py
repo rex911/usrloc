@@ -183,7 +183,7 @@ class SdA(object):
             if first_layer:
                 cost, updates = dA.get_cost_updates(corruption_level,
                                                     learning_rate,
-                                                    noise='gaussian',
+                                                    noise='masking',
                                                     sqrd=True)
                 first_layer = False
             else:

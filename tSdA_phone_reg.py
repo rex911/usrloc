@@ -104,8 +104,8 @@ def load_data(dataset):
 
     numpy.random.seed(0)
     indices = numpy.random.permutation(leny)
-    train_size = int(leny * 0.8)
-    valid_size = int(leny * 0.9)
+    train_size = int(leny * 0.6)
+    valid_size = int(leny * 0.8)
     test_size = leny
     X_train = shared(X[indices[:train_size]].toarray())
     y_train = shared(y[indices[:train_size]])

@@ -22,6 +22,8 @@ from theano import shared
 from theano.tensor.shared_randomstreams import RandomStreams
 
 from exSdA import SdA
+from twokenize import tokenizeRawTweetText
+
 
 import preproc
 from sklearn.feature_extraction.text import CountVectorizer
@@ -49,7 +51,7 @@ def load_data_50(dataset):
     X_raw, y = X_raw_t, y_t
     leny = len(y)
     y = numpy.asarray(y, dtype=theano.config.floatX)
-    vectorizer = CountVectorizer(min_df=5, max_features=5000, stop_words=None, ngram_range=(1,3), dtype=theano.config.floatX, binary=True)
+    vectorizer = CountVectorizer(min_df=1, max_features=10000, stop_words='english', tokenizer=tokenizeRawTweetText, ngram_range=(1,1), binary=True, dtype=theano.config.floatX)
     X = vectorizer.fit_transform(X_raw)
 
     numpy.random.seed(0)
@@ -152,8 +154,15 @@ def load_data(dataset):
     X_raw, y = X_raw_t, y_t
     leny = len(y)
     y = numpy.asarray(y, dtype=theano.config.floatX)
-    vectorizer = CountVectorizer(min_df=5, max_features=5000, stop_words=None, ngram_range=(1,3), dtype=theano.config.floatX, binary=True)
+    vectorizer = CountVectorizer(min_df=1, max_features=10000, stop_words='english', tokenizer=tokenizeRawTweetText, ngram_range=(1,1), binary=True, dtype=theano.config.floatX)
     X = vectorizer.fit_transform(X_raw)
+    """
+    #n_words = [len(tokenizeRawTweetText(i)) for i in X_raw]
+    n_words = [len(i.split('\n')) for i in X_raw]
+    n_words = numpy.asarray([n_words], dtype=theano.config.floatX)
+    X = numpy.divide(X.toarray(), n_words.T)
+    """
+
 
     numpy.random.seed(0)
     indices = numpy.random.permutation(leny)
@@ -168,8 +177,9 @@ def load_data(dataset):
     y_test = T.cast(shared(y[indices[valid_size: test_size]]), 'int32')
     return [(X_train, y_train), (X_valid, y_valid), (X_test, y_test), len(shortlist)]
 
-def test_tSdA(finetune_lr=0.01, pretraining_epochs=25,
-             pretrain_lr=0.1, training_epochs=1000,
+def test_tSdA(finetune_lr=0.01, pretraining_epochs=10,
+             pretrain_lr=15.1, training_epochs=1000,
+              min_iter=50, state_wise=False,
              dataset='eisenstein.data.gz', batch_size=32):
     """
     Demonstrates how to train and test a stochastic denoising autoencoder.
@@ -194,7 +204,12 @@ def test_tSdA(finetune_lr=0.01, pretraining_epochs=25,
 
     """
 
-    datasets = load_data(dataset)
+    print "Loading data..."
+    if state_wise:
+        datasets = load_data_50(dataset)
+    else:
+        datasets = load_data(dataset)
+    print "Data loaded!"
 
     train_set_x, train_set_y = datasets[0]
     valid_set_x, valid_set_y = datasets[1]
@@ -207,11 +222,11 @@ def test_tSdA(finetune_lr=0.01, pretraining_epochs=25,
 
     # numpy random generator
     numpy_rng = numpy.random.RandomState(89677)
-    """
+
     print '... building the model'
     # construct the stacked denoising autoencoder class
-    sda = SdA(numpy_rng=numpy_rng, n_ins=5000,
-              hidden_layers_sizes=[5000, 5000, 5000],
+    sda = SdA(numpy_rng=numpy_rng, n_ins=10000,
+              hidden_layers_sizes=[10000],
               n_outs=output_size)
 
     #########################
@@ -224,7 +239,7 @@ def test_tSdA(finetune_lr=0.01, pretraining_epochs=25,
     print '... pre-training the model'
     start_time = time.clock()
     ## Pre-train layer-wise
-    corruption_levels = [.3, .25, .25]
+    corruption_levels = [.1, .20, .30]
     for i in xrange(sda.n_layers):
         # go through pretraining epochs
         for epoch in xrange(pretraining_epochs):
@@ -234,15 +249,16 @@ def test_tSdA(finetune_lr=0.01, pretraining_epochs=25,
                 c.append(pretraining_fns[i](index=batch_index,
                          corruption=corruption_levels[i],
                          lr=pretrain_lr))
-            if i == 0:
-                pretraining_epochs = 10
-                pretrain_lr = 1
             print 'Pre-training layer %i, epoch %d, cost ' % (i, epoch),
             print numpy.mean(c)
 
+    """
     f = gzip.open('sda.model', 'wb')
     cPickle.dump(sda, f)
     f.close()
+    sys.exit()
+
+    """
     end_time = time.clock()
 
     print >> sys.stderr, ('The pretraining code for file ' +
@@ -265,6 +281,7 @@ def test_tSdA(finetune_lr=0.01, pretraining_epochs=25,
     print >> sys.stderr, ('The loading code for file ' +
                           os.path.split(__file__)[1] +
                           ' ran for %.2fm' % ((end_time - start_time) / 60.))
+    """
     ########################
     # FINETUNING THE MODEL #
     ########################
@@ -277,7 +294,7 @@ def test_tSdA(finetune_lr=0.01, pretraining_epochs=25,
 
     print '... finetunning the model'
     # early-stopping parameters
-    patience = 290 * n_train_batches  # look as this many examples regardless
+    patience = min_iter * n_train_batches  # look as this many examples regardless
     patience_increase = 2.  # wait this much longer when a new best is
                             # found
     improvement_threshold = 0.995  # a relative improvement of this much is
@@ -344,5 +361,8 @@ def test_tSdA(finetune_lr=0.01, pretraining_epochs=25,
 
 if __name__ == '__main__':
     warnings.filterwarnings('ignore')
-    #theano.config.floatX='float32'
-    test_tSdA()
+    lr = [0.01]
+    for i in lr:
+        print 'Learning rate:', i
+        test_tSdA(finetune_lr=i, min_iter=500, pretraining_epochs=10, state_wise=True)
+
